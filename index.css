@@ -56,6 +56,15 @@ input { font: inherit; color: inherit; }
 .ms.sm { font-size: 16px; }
 .ms.lg { font-size: 26px; }
 
+/* ---------- Demo banner ---------- */
+.demo-banner {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 8px 16px; background: #fff4d6; color: #6b4300; border-bottom: 1px solid #f1d58f;
+  font-size: 12.5px; line-height: 1.4; text-align: center;
+}
+.demo-banner a { text-decoration: underline; font-weight: 600; }
+.demo-banner .ms { flex: none; }
+
 /* ---------- Generic UI ---------- */
 .card {
   background: var(--surface);
