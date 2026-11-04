@@ -9,6 +9,6 @@
 
    Ikkalasi bo'sh qolsa, sayt avvalgidek faqat demo rejimda ishlaydi. */
 window.SUPABASE_CONFIG = {
-  url: '',
-  anonKey: ''
+  url: 'https://pdzianoebvxroytmssmk.supabase.co',
+  anonKey: 'sb_publishable_S46iHxquNimmkV_YbUBh1w_217FpK6Q'
 };
