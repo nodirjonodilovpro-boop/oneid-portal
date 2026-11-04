@@ -30,6 +30,22 @@
   };
   const tr = (s) => (window.I18N ? window.I18N.tr(s, state.lang) : s);
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+  // Demo profilini foydalanuvchi o'zgartirishi mumkin (brauzerda saqlanadi)
+  function applyProfile(p) {
+    if (!p) return;
+    if (p.full) {
+      const parts = p.full.trim().split(/\s+/);
+      USER.full = parts.join(' ');
+      USER.last = (parts[0] || '').toUpperCase();
+      USER.first = (parts[1] || '').toUpperCase();
+      USER.middle = parts.slice(2).join(' ').toUpperCase();
+      USER.short = parts.slice(0, 2).join(' ');
+      USER.initials = ((parts[0] || '?')[0] + (parts[1] ? parts[1][0] : '')).toUpperCase();
+    }
+    ['phone', 'email', 'address'].forEach(k => { if (p[k]) USER[k] = p[k]; });
+  }
+  applyProfile(local.get('profile', null));
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   function isDark() { return document.documentElement.getAttribute('data-theme') === 'dark'; }
   function setTheme(mode) {
@@ -637,7 +653,7 @@
       <section class="hero">
         <div class="row wrap" style="gap:8px"><span class="chip solid-green">${ic('verified', 'sm')} ONEID: BIOMETRIK DARAJA (YUQORI)</span><span class="chip">Sessiya faol • E-IMZO 4.8.2</span></div>
         <div class="row between wrap" style="margin-top:12px;gap:16px;align-items:flex-end">
-          <div><h1 class="h1">Xush kelibsiz, Azizbek Bahodirovich Karimov</h1>
+          <div><h1 class="h1"><span>Xush kelibsiz,</span> ${esc(state.user ? displayName() : USER.full.split(' ').slice(1).concat(USER.full.split(' ')[0]).join(' '))}</h1>
           <div class="row wrap small" style="margin-top:8px;color:rgba(255,255,255,.85);gap:16px"><span>JShShIR: <b class="mono">${USER.pinfl}</b></span><span>Tug'ilgan sana: <b>${USER.birth}</b></span></div>
           <div class="xs" style="margin-top:8px;color:var(--green-bright)">${ic('history', 'sm')} Oxirgi kirish: Bugun, 09:41 (Toshkent, IP: 84.54.82.***)</div></div>
           <button class="btn btn-white" data-toast="Guvohnoma havolasi 24 soatga yaratildi va nusxalandi">${ic('qr_code_2', 'sm')} QR Guvohnoma Ulashish</button>
@@ -1070,7 +1086,7 @@
           ${state.user ? `
           <div class="card pad row wrap" style="gap:16px"><div class="avatar" style="width:64px;height:64px;font-size:22px">${esc(initials())}</div><div class="grow"><div class="h2">${esc(displayName())}</div><div class="small muted">${esc(state.user.email)}</div><div class="row wrap" style="margin-top:6px;gap:6px"><span class="chip green">${ic('cloud_done', 'sm')} Supabase hisob</span><span class="chip">${ic('event', 'sm')} ${new Date(state.user.created_at).toLocaleDateString('uz-UZ')}</span></div></div><button class="btn btn-soft" id="editName">${ic('edit', 'sm')} Tahrirlash</button></div>
           <div class="notice">${ic('info')}<p>Hujjatlar portfeli va Mulk bo'limiga siz qo'shgan yozuvlar bulutda saqlanadi. Qolgan ma'lumotlar (ID-karta, pasport va h.k.) namuna sifatida ko'rsatilgan.</p></div>` : `
-          <div class="card pad row wrap" style="gap:16px"><div class="avatar" style="width:64px;height:64px;font-size:22px">${USER.initials}</div><div class="grow"><div class="h2">${USER.full}</div><div class="small muted mono">JShShIR: ${USER.pinfl}</div><div class="row wrap" style="margin-top:6px;gap:6px"><span class="chip green">${ic('verified', 'sm')} Daraja 3 • To'liq</span><span class="chip blue">${USER.phone}</span><span class="chip">${USER.email}</span></div></div><button class="btn btn-soft" data-toast="Ma'lumotlarni o'zgartirish uchun Davlat xizmatlari markaziga murojaat qiling">${ic('edit', 'sm')} Tahrirlash</button></div>`}
+          <div class="card pad row wrap" style="gap:16px"><div class="avatar" style="width:64px;height:64px;font-size:22px">${USER.initials}</div><div class="grow"><div class="h2">${USER.full}</div><div class="small muted mono">JShShIR: ${USER.pinfl}</div><div class="row wrap" style="margin-top:6px;gap:6px"><span class="chip green">${ic('verified', 'sm')} Daraja 3 • To'liq</span><span class="chip blue">${USER.phone}</span><span class="chip">${esc(USER.email)}</span></div></div><button class="btn btn-soft" id="editDemo">${ic('edit', 'sm')} Tahrirlash</button></div>`}
           <div class="card pad"><b class="h3">Xavfsizlik sozlamalari</b>${toggles.map(t => `<div class="set-row"><div class="grow"><div class="small bold">${t[1]}</div><div class="xs muted">${t[2]}</div></div><label class="switch"><input type="checkbox" data-set="${t[0]}" ${store.get('set_' + t[0], t[3]) ? 'checked' : ''}><span></span></label></div>`).join('')}</div>
           <div class="card pad"><div class="row between" style="margin-bottom:6px"><b class="h3">Faol sessiyalar</b><button class="btn btn-ghost btn-sm" id="killAll">Boshqalarini tugatish</button></div>
             <div id="sessions">${[['desktop_windows', 'Chrome 122 • Windows 11', 'Toshkent, UZ • 84.54.82.*** ', 'Joriy sessiya', true], ['phone_iphone', 'OneID Mobile • iPhone 15', 'Toshkent, UZ • 2 soat oldin'], ['laptop_mac', 'Safari • macOS', 'Samarqand, UZ • 3 kun oldin']].map(s => `<div class="set-row">${ic(s[0], 'primary')}<div class="grow"><div class="small bold">${s[1]}</div><div class="xs muted">${s[2]}</div></div>${s[4] ? `<span class="chip green">${s[3]}</span>` : `<button class="btn btn-ghost btn-sm" data-kill>Tugatish</button>`}</div>`).join('')}</div></div>
@@ -1087,6 +1103,24 @@
     $$('[data-set]').forEach(c => c.addEventListener('change', () => { store.set('set_' + c.dataset.set, c.checked); toast(c.checked ? 'Yoqildi' : 'O\'chirildi', c.checked ? 'toggle_on' : 'toggle_off'); }));
     $$('[data-kill]').forEach(b => b.addEventListener('click', () => { b.closest('.set-row').remove(); toast('Sessiya tugatildi'); }));
     $('#killAll').onclick = () => { $$('[data-kill]').forEach(b => b.closest('.set-row').remove()); toast('Boshqa barcha sessiyalar tugatildi'); };
+    const ed = $('#editDemo');
+    if (ed) ed.onclick = () => openForm({
+      title: 'Profilni tahrirlash',
+      values: { full: USER.full, phone: USER.phone, email: USER.email, address: USER.address },
+      fields: [
+        { name: 'full', label: 'Familiya Ism Otasining ismi', required: true, full: true, icon: 'person', max: 80, placeholder: 'Karimov Azizbek Bahodirovich' },
+        { name: 'phone', label: 'Telefon', icon: 'call', max: 20, placeholder: '+998 90 123 45 67' },
+        { name: 'email', label: 'Email', icon: 'mail', max: 80 },
+        { name: 'address', label: 'Doimiy yashash joyi', full: true, icon: 'home', max: 160 }
+      ],
+      onSave: (d) => {
+        if (d.full.split(/\s+/).length < 2) return toast('Familiya va ismni kiriting', 'error');
+        local.set('profile', d);
+        applyProfile(d);
+        toast('Profil yangilandi');
+        render();
+      }
+    });
     const en = $('#editName');
     if (en) en.onclick = () => openForm({
       title: 'Profilni tahrirlash', values: { full_name: displayName() },

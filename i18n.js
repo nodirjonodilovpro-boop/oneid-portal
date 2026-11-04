@@ -160,7 +160,7 @@
     ['Sozlamalar', 'Настройки', 'Settings'],
 
     // Boshqaruv
-    ['Xush kelibsiz, Azizbek Bahodirovich Karimov', 'Добро пожаловать, Азизбек Баходирович Каримов', 'Welcome, Azizbek Bahodirovich Karimov'],
+    ['Xush kelibsiz,', 'Добро пожаловать,', 'Welcome,'],
     ["Tug'ilgan sana:", 'Дата рождения:', 'Date of birth:'],
     ['QR Guvohnoma Ulashish', 'Поделиться QR-удостоверением', 'Share QR ID'],
     ['Faol hujjatlar', 'Активные документы', 'Active documents'],
@@ -391,7 +391,10 @@
     ['Parol yangilandi', 'Пароль обновлён', 'Password updated'],
     ['Supabase hisob', 'Аккаунт Supabase', 'Supabase account'],
     ['Profilni tahrirlash', 'Редактировать профиль', 'Edit profile'],
-    ['Profil yangilandi', 'Профиль обновлён', 'Profile updated'],
+    ['Familiya Ism Otasining ismi', 'Фамилия Имя Отчество', 'Last First Middle name'],
+    ['Telefon', 'Телефон', 'Phone'],
+    ['Familiya va ismni kiriting', 'Введите фамилию и имя', 'Enter last and first name'],
+    ['Profil yangilandi','Профиль обновлён', 'Profile updated'],
     ["Hujjatlar portfeli va Mulk bo'limiga siz qo'shgan yozuvlar bulutda saqlanadi. Qolgan ma'lumotlar (ID-karta, pasport va h.k.) namuna sifatida ko'rsatilgan.", 'Записи, добавленные вами в документы и имущество, хранятся в облаке. Остальные данные (ID-карта, паспорт и т.д.) — образец.', 'Records you add to Documents and Property are stored in the cloud. Other data (ID card, passport, etc.) is sample data.'],
     ["Serverga ulanib bo'lmadi. Internetni yoki supabase-config.js sozlamasini tekshiring.", 'Не удалось подключиться к серверу. Проверьте интернет или supabase-config.js.', 'Could not reach the server. Check your internet or supabase-config.js.'],
     ["Ma'lumotlarni yuklab bo'lmadi", 'Не удалось загрузить данные', 'Could not load data'],
