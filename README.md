@@ -31,6 +31,12 @@ Boshqa kirish usullari: E-IMZO (istalgan kalit paroli), QR-kod (skanerlash simul
 
 Sayt moslashuvchan: kompyuterda chap menyu, telefonda pastki menyu bilan ishlaydi.
 
+### Qo'shimcha imkoniyatlar
+
+- 🌐 **3 til:** O'zbekcha, Русский, English — tanlov eslab qolinadi
+- 🌙 **Tungi rejim:** tugma bilan yoki tizim sozlamasiga mos avtomatik (Sozlamalar → Mavzu)
+- ➕ **Ma'lumot qo'shish:** Hujjatlar portfeliga yangi hujjat, Mulk va Transport bo'limiga avtomobil / kvartira / yer uchastkasi qo'shish, tahrirlash va o'chirish (ma'lumotlar brauzerning `localStorage`'ida saqlanadi)
+
 ## Texnologiyalar
 
 - HTML5, CSS3 (CSS o'zgaruvchilari, Grid, Flexbox), Vanilla JavaScript (hash routing asosidagi SPA)
@@ -53,8 +59,9 @@ Keyin http://localhost:5500 manzilini oching. Shriftlar va ikonkalar yuklanishi 
 index.html   — sahifa skeleti
 index.css    — barcha uslublar va moslashuvchan dizayn
 index.js     — sahifalar, marshrutlash va interaktivlik
+i18n.js      — rus va ingliz tillariga tarjimalar lug'ati
 ```
 
 ## Eslatma
 
-Barcha ma'lumotlar (F.I.Sh, JShShIR, hujjat raqamlari va h.k.) to'qima namunadir. Sayt hech qanday serverga ma'lumot yubormaydi. Kirish holati faqat brauzerning `sessionStorage`'ida saqlanadi.
+Barcha ma'lumotlar (F.I.Sh, JShShIR, hujjat raqamlari va h.k.) to'qima namunadir. Sayt hech qanday serverga ma'lumot yubormaydi. Kirish holati brauzerning `sessionStorage`'ida, til, mavzu va siz qo'shgan ma'lumotlar esa `localStorage`'ida saqlanadi.

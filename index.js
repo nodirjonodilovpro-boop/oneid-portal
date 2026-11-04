@@ -17,12 +17,35 @@
     get(k, d) { try { const v = sessionStorage.getItem('oneid_' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { sessionStorage.setItem('oneid_' + k, JSON.stringify(v)); } catch (e) { /* ignore */ } }
   };
+  // Doimiy saqlash (brauzer yopilganda ham qoladi)
+  const local = {
+    get(k, d) { try { const v = localStorage.getItem('oneid_' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem('oneid_' + k, JSON.stringify(v)); } catch (e) { /* ignore */ } }
+  };
   const state = {
     authed: store.get('authed', false),
     stage: store.get('stage', 'none'), // none | password | done
-    lang: 'uz',
+    lang: ['uz', 'ru', 'en'].includes(local.get('lang', 'uz')) ? local.get('lang', 'uz') : 'uz',
     timers: []
   };
+  const tr = (s) => (window.I18N ? window.I18N.tr(s, state.lang) : s);
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  function isDark() { return document.documentElement.getAttribute('data-theme') === 'dark'; }
+  function setTheme(mode) {
+    // mode: 'light' | 'dark' | 'system'
+    try { if (mode === 'system') localStorage.removeItem('oneid_theme'); else localStorage.setItem('oneid_theme', mode); } catch (e) { /* ignore */ }
+    const dark = mode === 'dark' || (mode === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if (dark) document.documentElement.setAttribute('data-theme', 'dark'); else document.documentElement.removeAttribute('data-theme');
+    $$('[data-theme-toggle]').forEach(b => { b.innerHTML = ic(dark ? 'light_mode' : 'dark_mode'); b.title = tr(dark ? 'Kunduzgi rejim' : 'Tungi rejim'); });
+  }
+  function themeMode() { try { return localStorage.getItem('oneid_theme') || 'system'; } catch (e) { return 'system'; } }
+  function setLang(lang) {
+    if (lang === state.lang) return;
+    local.set('lang', lang);
+    location.reload();
+  }
+  function themeBtn() { return `<button class="icon-btn" data-theme-toggle aria-label="Tungi rejim" title="${isDark() ? 'Kunduzgi rejim' : 'Tungi rejim'}">${ic(isDark() ? 'light_mode' : 'dark_mode')}</button>`; }
 
   // ---------- Helpers ----------
   const $ = (s, r = document) => r.querySelector(s);
@@ -32,7 +55,7 @@
 
   function toast(msg, icon = 'check_circle') {
     const t = $('#toast');
-    t.innerHTML = ic(icon, 'fill') + '<span>' + msg + '</span>';
+    t.innerHTML = ic(icon, 'fill') + '<span>' + esc(tr(msg)) + '</span>';
     t.classList.add('show');
     clearTimeout(toast._t);
     toast._t = setTimeout(() => t.classList.remove('show'), 2600);
@@ -74,7 +97,7 @@
         <div class="row" style="gap:14px">
           <div class="call"><div class="icon-box green">${ic('support_agent', 'sm')}</div><div><div class="xs faint">24/7 Call Markaz</div><div class="bold small">+998 71 202-32-32 • 1120</div></div></div>
           ${langSwitch()}
-          <div class="avatar" style="width:32px;height:32px">${ic('person', 'sm fill')}</div>
+          ${themeBtn()}
         </div>
       </header>
       <main class="auth-main ${single ? 'single' : ''}">${inner}</main>
@@ -85,7 +108,7 @@
     </div>`;
   }
   function langSwitch() {
-    return `<div class="lang">${['O\'ZB', 'РУС', 'ENG'].map((l, i) => `<button data-lang="${i}" class="${i === 0 ? 'active' : ''}">${l}</button>`).join('')}</div>`;
+    return `<div class="lang">${[['uz', 'O\'ZB'], ['ru', 'РУС'], ['en', 'ENG']].map(l => `<button data-lang="${l[0]}" class="${state.lang === l[0] ? 'active' : ''}">${l[1]}</button>`).join('')}</div>`;
   }
 
   // ---------- LOGIN ----------
@@ -167,6 +190,7 @@
       $$('#loginTabs .tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
       panel.innerHTML = '<div class="fade-in">' + loginPanels[tab]() + '</div>';
       ({ pass: mountPass, eimzo: mountEri, qr: mountQr, mobile: mountMobile })[tab]();
+      translate(panel);
     };
     $$('#loginTabs .tab').forEach(t => t.addEventListener('click', () => show(t.dataset.tab)));
     $$('[data-tab-jump]').forEach(b => b.addEventListener('click', () => show(b.dataset.tabJump)));
@@ -193,7 +217,7 @@
     $('#passForm').addEventListener('submit', e => {
       e.preventDefault();
       const err = $('#loginErr');
-      const fail = (m) => { err.style.display = 'flex'; err.querySelector('p').textContent = m; };
+      const fail = (m) => { err.style.display = 'flex'; err.querySelector('p').textContent = tr(m); };
       const login = $('#login').value.trim(), pass = $('#password').value;
       if (login.length < 3) return fail('JShShIR yoki loginni kiriting.');
       if (/^\d+$/.test(login) && login.length !== 14) return fail('JShShIR (PINFL) 14 ta raqamdan iborat bo\'lishi kerak.');
@@ -225,6 +249,7 @@
           <div class="kv" style="margin-top:12px"><div><div class="k">Qurilma & brauzer</div><div class="v small">Chrome • Windows 11</div></div><div><div class="k">Hudud & IP</div><div class="v small">Toshkent (84.54.82.***)</div></div><div><div class="k">Fuqaro (F.I.Sh)</div><div class="v small">Azizbek B. Karimov</div></div><div><div class="k">JShShIR</div><div class="v small mono">${USER.pinfl}</div></div></div>
           <div class="row" style="margin-top:12px"><button class="btn btn-primary grow" id="qrOk">${ic('fingerprint', 'sm')} Kirishni tasdiqlash</button><button class="btn btn-ghost" id="qrNo">${ic('close', 'sm')} Bekor qilish</button></div>
         </div>`;
+      translate($('#qrSession'));
       $('#qrOk').onclick = () => { toast('Telefon orqali tasdiqlandi'); completeLogin(); };
       $('#qrNo').onclick = () => { $('#qrSession').innerHTML = ''; $('#qrSim').style.display = ''; toast('Sessiya bekor qilindi', 'cancel'); };
     };
@@ -317,7 +342,7 @@
         if (pin === DEMO_PIN) return completeLogin();
         attempts--; pin = ''; drawDots();
         const dots = $('#dots'); dots.classList.remove('shake'); void dots.offsetWidth; dots.classList.add('shake');
-        $('#attempts').innerHTML = ic('timer', 'sm') + ` Noto'g'ri! ${attempts} ta urinish qoldi`;
+        $('#attempts').innerHTML = ic('timer', 'sm') + ' ' + esc(tr(`Noto'g'ri! ${attempts} ta urinish qoldi`));
         if (attempts <= 0) { toast('Urinishlar tugadi. Hisob 15 daqiqaga bloklandi', 'block'); state.stage = 'none'; store.set('stage', 'none'); go('login'); }
       } else if (mode === 'sms') {
         if ($('#otp').value.replace(/\D/g, '').length !== 6) return toast('6 xonali kodni kiriting', 'error');
@@ -343,6 +368,7 @@
         localTimers.push(setInterval(() => { s--; const b = $('#pushBar'), t = $('#pushSec'); if (b) b.style.width = ((60 - s) / 60 * 100) + '%'; if (t) t.textContent = s; if (s <= 0) { stopLocal(); toast('So\'rov muddati tugadi', 'timer_off'); show('push'); } }, 1000));
         $('#pushOk').onclick = () => { toast('Face-ID orqali tasdiqlandi'); completeLogin(); };
       }
+      translate(panel);
     };
     const press = (k) => {
       if (k === 'del') pin = pin.slice(0, -1);
@@ -411,7 +437,7 @@
       if (b) b.style.width = ((5 - s) / 5 * 100) + '%';
       if (s <= 0) go('dashboard');
     }, 1000);
-    $('#pause').onclick = () => { paused = !paused; $('#pause').innerHTML = paused ? ic('play_circle', 'sm') + ' Davom ettirish' : ic('pause_circle', 'sm') + ' Kutish rejimiga olish'; };
+    $('#pause').onclick = () => { paused = !paused; $('#pause').innerHTML = paused ? ic('play_circle', 'sm') + ' ' + tr('Davom ettirish') : ic('pause_circle', 'sm') + ' ' + tr('Kutish rejimiga olish'); };
   }
 
   // ---------- APP SHELL ----------
@@ -444,6 +470,7 @@
           <nav class="top-links"><a href="#" data-toast="Elektron arizalar bo'limi tez orada">Elektron Arizalar</a><a href="#" data-toast="QR tekshiruv skaneri ishga tushirildi">QR Tekshiruv</a><a href="#" data-toast="To'lovlar tarixi yuklanmoqda">To'lovlar Tarixi</a></nav>
           <div class="top-right">
             ${langSwitch()}
+            ${themeBtn()}
             <div style="position:relative"><button class="icon-btn" id="bell" aria-label="Bildirishnomalar">${ic('notifications')}<span class="count">3</span></button>
               <div class="dropdown card" id="notif">
                 <div class="row between" style="padding:6px 10px 10px"><b>Bildirishnomalar</b><a href="#/deadlines" class="xs primary bold">Barchasi</a></div>
@@ -536,12 +563,96 @@
     { cat: 'talim', icon: 'school', title: 'Oliy ma\'lumot diplomi (Bakalavr)', org: 'TATU • Dasturiy injiniring', no: 'B № 2045871', issued: '30.06.2006', exp: 'Muddatsiz', status: 'Tasdiqlangan', color: 'green' },
     { cat: 'tibbiy', icon: 'medical_information', title: 'Elektron tibbiy karta', org: 'Sog\'liqni saqlash vazirligi', no: 'MED-31205840', issued: '01.02.2022', exp: 'Muddatsiz', status: 'Faol', color: 'blue' }
   ];
+  // ---------- Modal forma (qo'shish / tahrirlash) ----------
+  const toISO = (d) => { const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(d || ''); return m ? `${m[3]}-${m[2]}-${m[1]}` : ''; };
+  const fromISO = (d) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d || ''); return m ? `${m[3]}.${m[2]}.${m[1]}` : ''; };
+  function openForm({ title, fields, values = {}, onSave, onDelete }) {
+    const back = document.createElement('div');
+    back.className = 'modal-back';
+    const field = (f) => {
+      const v = values[f.name] == null ? '' : values[f.name];
+      let control;
+      if (f.type === 'select') control = `<select name="${f.name}">${f.options.map(o => `<option value="${esc(o[0])}" ${String(v) === String(o[0]) ? 'selected' : ''}>${esc(o[1])}</option>`).join('')}</select>`;
+      else if (f.type === 'date') control = `<input type="date" name="${f.name}" value="${esc(toISO(v))}">`;
+      else control = `<input name="${f.name}" value="${esc(v)}" placeholder="${esc(f.placeholder || '')}" maxlength="${f.max || 80}">`;
+      return `<div class="field ${f.full ? 'full' : ''}"><label><span>${esc(f.label)}${f.required ? ' <b class="red">*</b>' : ''}</span></label><div class="input">${f.icon ? ic(f.icon) : ''}${control}</div></div>`;
+    };
+    back.innerHTML = `
+      <form class="card modal" novalidate>
+        <div class="modal-head"><b class="h2">${esc(title)}</b><button type="button" class="icon-btn" data-close aria-label="Yopish">${ic('close')}</button></div>
+        <div class="modal-body">${fields.map(field).join('')}</div>
+        <div class="modal-foot">${onDelete ? `<button type="button" class="btn btn-danger" data-del style="margin-right:auto">${ic('delete', 'sm')} O'chirish</button>` : ''}<button type="button" class="btn btn-ghost" data-close>Bekor qilish</button><button type="submit" class="btn btn-primary">${ic('check', 'sm')} Saqlash</button></div>
+      </form>`;
+    document.body.appendChild(back);
+    translate(back);
+    const close = () => { back.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', onKey);
+    back.addEventListener('click', e => { if (e.target === back) close(); });
+    $$('[data-close]', back).forEach(b => b.addEventListener('click', close));
+    if (onDelete) $('[data-del]', back).addEventListener('click', () => { close(); onDelete(); });
+    const first = $('input, select', back); if (first) first.focus();
+    $('form', back).addEventListener('submit', e => {
+      e.preventDefault();
+      const data = {}; let ok = true;
+      fields.forEach(f => {
+        const el = back.querySelector(`[name="${f.name}"]`);
+        let v = el.value.trim();
+        if (f.type === 'date') v = fromISO(v);
+        data[f.name] = v;
+        const bad = f.required && !v;
+        el.closest('.input').classList.toggle('invalid', bad);
+        if (bad) ok = false;
+      });
+      if (!ok) return toast("Majburiy maydonlarni to'ldiring", 'error');
+      close();
+      onSave(data);
+    });
+  }
+  function confirmDelete(name, onYes) {
+    if (confirm(tr("O'chirish") + ': "' + name + '"?')) onYes();
+  }
+
+  // ---------- Foydalanuvchi qo'shgan hujjatlar ----------
+  const DOC_CATS = [['shaxsiy', 'Shaxsiy'], ['haydovchilik', 'Haydovchilik'], ['talim', 'Ta\'lim'], ['tibbiy', 'Tibbiy'], ['boshqa', 'Boshqa']];
+  const DOC_ICONS = { shaxsiy: 'badge', haydovchilik: 'directions_car', talim: 'school', tibbiy: 'medical_information', boshqa: 'description' };
+  const userDocs = () => local.get('docs', []);
+  const allDocs = () => DOCS.concat(userDocs().map(d => Object.assign({ icon: DOC_ICONS[d.cat] || 'description', status: 'Qo\'shilgan', color: 'amber', custom: true }, d)));
+  function docForm(doc) {
+    openForm({
+      title: doc ? 'Hujjatni tahrirlash' : 'Yangi hujjat qo\'shish',
+      values: doc || { cat: 'shaxsiy' },
+      fields: [
+        { name: 'title', label: 'Hujjat nomi', required: true, full: true, icon: 'description', placeholder: 'Masalan: Nikoh guvohnomasi' },
+        { name: 'cat', label: 'Toifasi', type: 'select', options: DOC_CATS.map(c => [c[0], tr(c[1])]) },
+        { name: 'no', label: 'Seriya va raqam', required: true, icon: 'tag', placeholder: 'AA 1234567', max: 30 },
+        { name: 'issued', label: 'Berilgan sana', type: 'date' },
+        { name: 'exp', label: 'Amal qilish muddati', type: 'date' },
+        { name: 'org', label: 'Bergan tashkilot', full: true, icon: 'account_balance', placeholder: 'Masalan: FHDYO, Toshkent sh.' }
+      ],
+      onSave: (data) => {
+        const list = userDocs();
+        if (doc) Object.assign(list.find(d => d.id === doc.id) || {}, data);
+        else list.unshift(Object.assign({ id: uid() }, data));
+        local.set('docs', list);
+        toast('Hujjat saqlandi');
+        render();
+      },
+      onDelete: doc ? () => deleteDoc(doc) : null
+    });
+  }
+  function deleteDoc(doc) {
+    confirmDelete(doc.title, () => { local.set('docs', userDocs().filter(d => d.id !== doc.id)); toast("Hujjat o'chirildi", 'delete'); render(); });
+  }
+
   function documentsPage() {
-    const cats = [['all', 'Barchasi', DOCS.length], ['shaxsiy', 'Shaxsiy'], ['haydovchilik', 'Haydovchilik'], ['talim', 'Ta\'lim'], ['tibbiy', 'Tibbiy']];
+    const docs = allDocs();
+    const count = (c) => docs.filter(d => d.cat === c).length;
+    const cats = [['all', 'Barchasi', docs.length]].concat(DOC_CATS.map(c => [c[0], c[1], count(c[0])]).filter(c => c[2] > 0));
     return `
       <section class="card pad row wrap between" style="gap:16px">
         <div class="row" style="align-items:flex-start;gap:14px"><div class="icon-box" style="background:var(--primary);color:#fff;width:48px;height:48px">${ic('folder_shared', 'fill')}</div><div><div class="xs bold green">ADLIYA & IIV REESTRI • <span class="muted">Real vaqtda integratsiya</span></div><h1 class="h1" style="font-size:26px">Raqamli Hujjatlar Portfeli</h1><p class="small muted" style="max-width:560px">O'zbekiston Respublikasi Vazirlar Mahkamasining qaroriga muvofiq, ilovadagi barcha raqamli hujjatlar qog'oz nusxa bilan qonuniy teng kuchga ega.</p></div></div>
-        <div class="row wrap"><span class="chip green" style="height:40px;padding:0 14px;border-radius:10px">${ic('task_alt', 'sm')} ${DOCS.length} ta faol davlat hujjati</span><button class="btn btn-primary" data-toast="Yagona QR-kod yaratildi (5 daqiqa amal qiladi)">${ic('qr_code_2', 'sm')} Yagona QR-kod</button></div>
+        <div class="row wrap"><span class="chip green" style="height:40px;padding:0 14px;border-radius:10px">${ic('task_alt', 'sm')} <span>${docs.length} ta faol davlat hujjati</span></span><button class="btn btn-soft" data-toast="Yagona QR-kod yaratildi (5 daqiqa amal qiladi)">${ic('qr_code_2', 'sm')} Yagona QR-kod</button><button class="btn btn-primary" id="addDoc">${ic('add', 'sm')} Hujjat qo'shish</button></div>
       </section>
       <section class="row wrap" style="gap:12px">
         <label class="search" style="max-width:none;flex:1;min-width:240px;background:#fff;border:1px solid var(--line)">${ic('search')}<input id="docSearch" placeholder="Hujjat nomi, seriyasi yoki turi bo'yicha qidirish"></label>
@@ -550,20 +661,31 @@
       <section class="grid-2" id="docGrid"></section>`;
   }
   function docCard(d) {
-    const chip = d.color === 'green' ? 'green' : d.color === 'gray' ? '' : 'blue';
+    const chip = d.color === 'green' ? 'green' : d.color === 'gray' ? '' : d.color === 'amber' ? 'amber' : 'blue';
+    const t = esc(d.title);
+    const actions = d.custom
+      ? `<button class="btn btn-ghost btn-sm" data-edit-doc="${d.id}">${ic('edit', 'sm')} <span>Tahrirlash</span></button><button class="btn btn-danger btn-sm" data-del-doc="${d.id}" aria-label="O'chirish">${ic('delete', 'sm')}</button>`
+      : `<button class="btn btn-ghost btn-sm" data-toast="${t}: QR">${ic('qr_code', 'sm')} QR</button><button class="btn btn-soft btn-sm" data-toast="${t}: PDF">Ko'rish ${ic('chevron_right', 'sm')}</button>`;
     return `<div class="card fade-in" style="overflow:hidden">
-      <div class="row" style="padding:16px 18px;border-bottom:1px solid var(--line)"><div class="icon-box">${ic(d.icon)}</div><div class="grow"><div class="bold">${d.title}</div><div class="xs muted">${d.org}</div></div><span class="chip ${chip}">${d.status}</span></div>
-      <div style="padding:16px 18px" class="stack"><div class="kv"><div><div class="k">Seriya va raqam</div><div class="v mono">${d.no}</div></div><div><div class="k">Amal qilish muddati</div><div class="v">${d.exp}</div></div><div><div class="k">Berilgan sana</div><div class="v">${d.issued}</div></div><div><div class="k">Egasi</div><div class="v">${USER.short}</div></div></div>
-      <div class="row between wrap"><span class="xs green row" style="gap:4px">${ic('verified', 'sm')} Davlat reestri bilan sinxron</span><div class="row"><button class="btn btn-ghost btn-sm" data-toast="${d.title}: QR-kod ko'rsatildi">${ic('qr_code', 'sm')} QR</button><button class="btn btn-soft btn-sm" data-toast="${d.title} PDF yuklandi">Ko'rish ${ic('chevron_right', 'sm')}</button></div></div></div>
+      <div class="row" style="padding:16px 18px;border-bottom:1px solid var(--line)"><div class="icon-box">${ic(d.icon)}</div><div class="grow"><div class="bold">${t}</div><div class="xs muted">${esc(d.org) || '—'}</div></div><span class="chip ${chip}">${esc(d.status)}</span></div>
+      <div style="padding:16px 18px" class="stack"><div class="kv"><div><div class="k">Seriya va raqam</div><div class="v mono">${esc(d.no)}</div></div><div><div class="k">Amal qilish muddati</div><div class="v">${esc(d.exp) || 'Muddatsiz'}</div></div><div><div class="k">Berilgan sana</div><div class="v">${esc(d.issued) || '—'}</div></div><div><div class="k">Egasi</div><div class="v">${USER.short}</div></div></div>
+      <div class="row between wrap"><span class="xs ${d.custom ? 'muted' : 'green'} row" style="gap:4px">${ic(d.custom ? 'person' : 'verified', 'sm')} <span>${d.custom ? 'Qo\'shilgan' : 'Davlat reestri bilan sinxron'}</span></span><div class="row">${actions}</div></div></div>
     </div>`;
   }
   function mountDocuments() {
     let cat = 'all';
     const draw = () => {
       const q = $('#docSearch').value.toLowerCase();
-      const list = DOCS.filter(d => (cat === 'all' || d.cat === cat) && (d.title + d.no + d.org).toLowerCase().includes(q));
-      $('#docGrid').innerHTML = list.length ? list.map(docCard).join('') : `<div class="card pad muted" style="grid-column:1/-1;text-align:center">${ic('search_off')} Hech narsa topilmadi</div>`;
+      const docs = allDocs();
+      const list = docs.filter(d => (cat === 'all' || d.cat === cat) && (tr(d.title) + d.title + d.no + (d.org || '')).toLowerCase().includes(q));
+      const grid = $('#docGrid');
+      grid.innerHTML = list.length ? list.map(docCard).join('') : `<div class="empty" style="grid-column:1/-1">${ic('search_off')} <span>Hech narsa topilmadi</span></div>`;
+      $$('[data-toast]', grid).forEach(el => el.addEventListener('click', e => { e.preventDefault(); toast(el.dataset.toast); }));
+      $$('[data-edit-doc]', grid).forEach(b => b.addEventListener('click', () => docForm(userDocs().find(d => d.id === b.dataset.editDoc))));
+      $$('[data-del-doc]', grid).forEach(b => b.addEventListener('click', () => deleteDoc(userDocs().find(d => d.id === b.dataset.delDoc))));
+      translate(grid);
     };
+    $('#addDoc').onclick = () => docForm(null);
     $$('#docPills .pill').forEach(p => p.addEventListener('click', () => { $$('#docPills .pill').forEach(x => x.classList.remove('active')); p.classList.add('active'); cat = p.dataset.cat; draw(); }));
     $('#docSearch').addEventListener('input', draw);
     const g = sessionQuery(); if (g) { $('#docSearch').value = g; }
@@ -576,7 +698,7 @@
     return `
       <section class="row between wrap" style="gap:16px;align-items:flex-end">
         <div><div class="upper" style="color:var(--green)">● Davlat kadastri • YHXX • O'zkomnazorat reestri</div><h1 class="h1" style="margin-top:4px">Mening Mulklarim va Transport Reestri</h1><p class="small muted" style="max-width:640px;margin-top:6px">Yagona Identifikatsiya Tizimi (OneID) orqali yuridik tasdiqlangan mulkiy huquqlar va ro'yxatga olingan aktivlar yagona monitoringi.</p></div>
-        <div class="row wrap"><button class="btn btn-ghost" data-toast="Reestr ko'chirmasi (PDF) yuklandi">${ic('download', 'sm')} Reestr ko'chirma (PDF)</button><button class="btn btn-primary" data-toast="Mulkni ro'yxatga olish arizasi ochildi">${ic('add_circle', 'sm')} Mulkni ro'yxatdan o'tkazish</button></div>
+        <div class="row wrap"><button class="btn btn-ghost" data-toast="Reestr ko'chirmasi (PDF) yuklandi">${ic('download', 'sm')} Reestr ko'chirma (PDF)</button><button class="btn btn-primary" data-add-asset>${ic('add_circle', 'sm')} Mulkni ro'yxatdan o'tkazish</button></div>
       </section>
       <section class="stats">
         ${stat('Transport vositalari', '1', 'ta avtomobil', 'Chevrolet Malibu-2 • 01 777 AAB', 'directions_car')}
@@ -584,7 +706,12 @@
         ${stat('SIM-kartalar', '3', 'ta raqam', 'Himoyalangan • 1 ta asosiy', 'sim_card')}
         ${stat('Ishonchnomalar', '1', 'ta berilgan', 'Notarial tasdiqlangan', 'assignment_ind')}
       </section>
-      <div class="pills" id="assetPills">${[['all', 'Barchasi', 7], ['transport', 'Transport', 1], ['realty', 'Ko\'chmas mulk', 2], ['sim', 'SIM-kartalar', 3], ['proxy', 'Ishonchnomalar', 1]].map((c, i) => `<button class="pill ${i === 0 ? 'active' : ''}" data-f="${c[0]}">${c[1]} <span class="count">${c[2]}</span></button>`).join('')}</div>
+      <div class="pills" id="assetPills">${[['all', 'Barchasi', 7 + userAssets().length], ['custom', 'Mening qo\'shganlarim', userAssets().length], ['transport', 'Transport', 1], ['realty', 'Ko\'chmas mulk', 2], ['sim', 'SIM-kartalar', 3], ['proxy', 'Ishonchnomalar', 1]].map((c, i) => `<button class="pill ${i === 0 ? 'active' : ''}" data-f="${c[0]}">${c[1]} <span class="count">${c[2]}</span></button>`).join('')}</div>
+
+      <section data-sec="custom">
+        <div class="section-title">${ic('add_home_work')} Qo'shilgan aktivlar <button class="btn btn-soft btn-sm" style="margin-left:auto;text-transform:none;letter-spacing:0" data-add-asset>${ic('add', 'sm')} Aktiv qo'shish</button></div>
+        <div class="grid-2" id="assetList">${assetListHTML()}</div>
+      </section>
 
       <section data-sec="transport">
         <div class="section-title">${ic('directions_car')} Transport vositasi (YHXX) <span class="chip green" style="margin-left:auto">${ic('verified', 'sm')} Tasdiqlangan</span></div>
@@ -625,6 +752,47 @@
         </div>
       </section>`;
   }
+  // ---------- Foydalanuvchi qo'shgan aktivlar ----------
+  const ASSET_TYPES = [['car', 'Avtomobil', 'directions_car'], ['house', 'Kvartira / Uy', 'apartment'], ['land', 'Yer uchastkasi', 'cottage']];
+  const userAssets = () => local.get('assets', []);
+  function assetListHTML() {
+    const list = userAssets();
+    if (!list.length) return `<div class="empty" style="grid-column:1/-1">${ic('inventory_2', 'lg')}<div style="margin-top:6px">Hali aktiv qo'shilmagan. «Aktiv qo'shish» tugmasini bosing.</div></div>`;
+    return list.map(a => {
+      const t = ASSET_TYPES.find(x => x[0] === a.type) || ASSET_TYPES[0];
+      const isCar = a.type === 'car';
+      return `<div class="card asset fade-in"><div class="asset-head"><div class="thumb ${a.type}" style="width:84px;height:70px">${ic(t[2], 'lg')}</div><div class="grow"><div class="row between"><span class="upper">${t[1]}</span><span class="chip amber">Qo'shilgan</span></div><div class="bold" style="font-size:16px">${esc(a.name)}</div><div class="small muted">${esc(a.details) || '—'}</div></div></div>
+        <div class="asset-body"><div class="row between" style="background:var(--surface-2);border-radius:10px;padding:10px 12px">${isCar ? `<span class="plate"><span class="num" style="font-size:14px">${esc(a.no)}</span></span>` : `<span class="small muted">Kadastr raqami:</span><b class="mono small">${esc(a.no)}</b>`}${a.date ? `<span class="xs muted">${esc(a.date)}</span>` : ''}</div>
+        <div class="row"><button class="btn btn-ghost btn-sm grow" data-edit-asset="${a.id}">${ic('edit', 'sm')} <span>Tahrirlash</span></button><button class="btn btn-danger btn-sm" data-del-asset="${a.id}" aria-label="O'chirish">${ic('delete', 'sm')}</button></div></div></div>`;
+    }).join('');
+  }
+  function assetForm(asset) {
+    openForm({
+      title: asset ? 'Aktivni tahrirlash' : 'Yangi aktiv qo\'shish',
+      values: asset || { type: 'car' },
+      fields: [
+        { name: 'type', label: 'Aktiv turi', type: 'select', options: ASSET_TYPES.map(t => [t[0], tr(t[1])]), full: true },
+        { name: 'name', label: 'Nomi / modeli', required: true, full: true, icon: 'label', placeholder: 'Masalan: Chevrolet Cobalt yoki Yunusobod 4-kvartal' },
+        { name: 'no', label: 'Davlat raqami yoki kadastr raqami', required: true, icon: 'tag', placeholder: '01 A 123 BC', max: 30 },
+        { name: 'date', label: 'Ro\'yxatga olingan sana', type: 'date' },
+        { name: 'details', label: 'Qo\'shimcha ma\'lumot', full: true, icon: 'notes', placeholder: tr('Manzil yoki rangi, yili') }
+      ],
+      onSave: (data) => {
+        const list = userAssets();
+        if (asset) Object.assign(list.find(a => a.id === asset.id) || {}, data);
+        else list.unshift(Object.assign({ id: uid() }, data));
+        local.set('assets', list);
+        toast('Aktiv saqlandi');
+        render();
+        setTimeout(() => { const s = $('[data-sec="custom"]'); if (s) s.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
+      },
+      onDelete: asset ? () => deleteAsset(asset) : null
+    });
+  }
+  function deleteAsset(a) {
+    confirmDelete(a.name, () => { local.set('assets', userAssets().filter(x => x.id !== a.id)); toast("Aktiv o'chirildi", 'delete'); render(); });
+  }
+
   function realty(kind, type, own, ownColor, title, place, tags, cad, tax, btns) {
     return `<div class="card asset"><div class="asset-head"><div class="thumb ${kind}" style="width:96px;height:80px">${ic(kind === 'house' ? 'apartment' : 'cottage', 'lg')}</div><div class="grow"><div class="row between"><span class="upper">${type}</span><span class="chip ${ownColor}">${own}</span></div><div class="bold" style="font-size:16px">${title}</div><div class="small muted">${place}</div><div class="row wrap" style="gap:6px;margin-top:6px">${tags.map((t, i) => `<span class="chip ${i === 0 ? 'blue' : ''}">${t}</span>`).join('')}</div></div></div>
       <div class="asset-body"><div class="row between" style="background:var(--surface-2);border-radius:10px;padding:10px 12px"><span class="small muted">Kadastr raqami:</span><b class="mono small">${cad}</b></div>
@@ -632,6 +800,9 @@
       <div class="row"><button class="btn btn-ghost grow btn-sm" data-toast="${btns[0]} yuklandi">${ic('description', 'sm')} ${btns[0]}</button><button class="btn btn-ghost grow btn-sm" data-toast="${btns[1]} yuklandi">${ic('download', 'sm')} ${btns[1]}</button></div></div></div>`;
   }
   function mountAssets() {
+    $$('[data-add-asset]').forEach(b => b.addEventListener('click', () => assetForm(null)));
+    $$('[data-edit-asset]').forEach(b => b.addEventListener('click', () => assetForm(userAssets().find(a => a.id === b.dataset.editAsset))));
+    $$('[data-del-asset]').forEach(b => b.addEventListener('click', () => deleteAsset(userAssets().find(a => a.id === b.dataset.delAsset))));
     $$('#assetPills .pill').forEach(p => p.addEventListener('click', () => {
       $$('#assetPills .pill').forEach(x => x.classList.remove('active')); p.classList.add('active');
       $$('[data-sec]').forEach(s => s.style.display = (p.dataset.f === 'all' || s.dataset.sec === p.dataset.f) ? '' : 'none');
@@ -769,7 +940,8 @@
         <div class="stack" style="gap:20px">
           <div class="card pad"><b class="h3">Xavfsizlik darajasi</b><div class="row" style="margin-top:12px"><div class="success-mark" style="width:60px;height:60px">${ic('shield', 'fill')}</div><div><div class="h2 green">Yuqori</div><div class="xs muted">5 ta tavsiyadan 4 tasi bajarilgan</div></div></div><div class="progress" style="margin-top:12px"><div style="width:80%"></div></div></div>
           <div class="card pad"><b class="h3">PIN-kodni o'zgartirish</b><div class="field" style="margin-top:12px"><div class="input">${ic('dialpad')}<input id="newPin" type="password" inputmode="numeric" maxlength="5" placeholder="Yangi 5 xonali PIN"></div></div><button class="btn btn-primary btn-block" style="margin-top:10px;height:42px" id="savePin">Saqlash</button></div>
-          <div class="card pad"><b class="h3">Interfeys tili</b><div class="tabs" style="margin-top:12px"><button class="tab active" data-l>O'zbekcha</button><button class="tab" data-l>Русский</button><button class="tab" data-l>English</button></div></div>
+          <div class="card pad"><b class="h3">Interfeys tili</b><div class="tabs" style="margin-top:12px">${[['uz', 'O\'zbekcha'], ['ru', 'Русский'], ['en', 'English']].map(l => `<button class="tab ${state.lang === l[0] ? 'active' : ''}" data-l="${l[0]}">${l[1]}</button>`).join('')}</div></div>
+          <div class="card pad"><b class="h3">Mavzu</b><div class="tabs" style="margin-top:12px">${[['light', 'light_mode', 'Kunduzgi'], ['dark', 'dark_mode', 'Tungi'], ['system', 'contrast', 'Tizim']].map(m => `<button class="tab ${themeMode() === m[0] ? 'active' : ''}" data-mode="${m[0]}">${ic(m[1], 'sm')}<span>${m[2]}</span></button>`).join('')}</div></div>
         </div>
       </section>`;
   }
@@ -778,7 +950,8 @@
     $$('[data-kill]').forEach(b => b.addEventListener('click', () => { b.closest('.set-row').remove(); toast('Sessiya tugatildi'); }));
     $('#killAll').onclick = () => { $$('[data-kill]').forEach(b => b.closest('.set-row').remove()); toast('Boshqa barcha sessiyalar tugatildi'); };
     $('#savePin').onclick = () => { const v = $('#newPin').value; if (!/^\d{5}$/.test(v)) return toast('PIN 5 ta raqamdan iborat bo\'lishi kerak', 'error'); $('#newPin').value = ''; toast('PIN-kod yangilandi'); };
-    $$('[data-l]').forEach(b => b.addEventListener('click', () => { $$('[data-l]').forEach(x => x.classList.remove('active')); b.classList.add('active'); toast('Til tanlandi: ' + b.textContent); }));
+    $$('[data-l]').forEach(b => b.addEventListener('click', () => setLang(b.dataset.l)));
+    $$('[data-mode]').forEach(b => b.addEventListener('click', () => { $$('[data-mode]').forEach(x => x.classList.toggle('active', x === b)); setTheme(b.dataset.mode); }));
   }
 
   // ---------- Router ----------
@@ -803,11 +976,15 @@
     if (!r.auth && !state.authed) { go('login'); return; }
     if (route === 'login' && state.authed) { go('dashboard'); return; }
     app.innerHTML = r.auth ? r.view() : appShell(route, r.view());
-    document.title = (r.title ? r.title + ' — ' : '') + 'OneID Davlat Raqamli Portali';
+    document.title = (r.title ? tr(r.title) + ' — ' : '') + 'OneID Davlat Raqamli Portali';
     window.scrollTo(0, 0);
     bindCommon();
     r.mount && r.mount();
+    translate(app);
   }
+
+  // Sahifadagi matnlarni tanlangan tilga o'girish
+  function translate(root) { if (window.I18N && state.lang !== 'uz') window.I18N.apply(root, state.lang); }
 
   function logout() {
     state.authed = false; state.stage = 'none';
@@ -823,7 +1000,8 @@
       (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(() => toast('Nusxalandi: ' + v), () => toast('Nusxalandi: ' + v));
     }));
     $$('[data-logout]').forEach(el => el.addEventListener('click', e => { e.preventDefault(); logout(); }));
-    $$('.lang button').forEach(b => b.addEventListener('click', () => { $$('.lang button').forEach(x => x.classList.toggle('active', x.dataset.lang === b.dataset.lang)); if (b.dataset.lang !== '0') toast('Tarjima tez orada qo\'shiladi', 'translate'); }));
+    $$('.lang button').forEach(b => b.addEventListener('click', () => setLang(b.dataset.lang)));
+    $$('[data-theme-toggle]').forEach(b => b.addEventListener('click', () => setTheme(isDark() ? 'light' : 'dark')));
     const bell = $('#bell');
     if (bell) {
       bell.addEventListener('click', e => { e.stopPropagation(); $('#notif').classList.toggle('open'); });
@@ -837,5 +1015,12 @@
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { const s = $('#gSearch'); if (s) { e.preventDefault(); s.focus(); } }
   });
   window.addEventListener('hashchange', render);
+  document.documentElement.lang = state.lang;
+  translate(document.querySelector('.demo-banner') || document.body);
+  if (window.matchMedia) {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onSys = () => { if (themeMode() === 'system') setTheme('system'); };
+    mq.addEventListener ? mq.addEventListener('change', onSys) : mq.addListener(onSys);
+  }
   render();
 })();
