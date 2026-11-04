@@ -37,6 +37,16 @@ Sayt moslashuvchan: kompyuterda chap menyu, telefonda pastki menyu bilan ishlayd
 - 🌙 **Tungi rejim:** tugma bilan yoki tizim sozlamasiga mos avtomatik (Sozlamalar → Mavzu)
 - ➕ **Ma'lumot qo'shish:** Hujjatlar portfeliga yangi hujjat, Mulk va Transport bo'limiga avtomobil / kvartira / yer uchastkasi qo'shish, tahrirlash va o'chirish (ma'lumotlar brauzerning `localStorage`'ida saqlanadi)
 
+## Backend (Supabase) — ixtiyoriy
+
+Supabase ulansa, kirish sahifasida **Email** bo'limi paydo bo'ladi: haqiqiy ro'yxatdan o'tish / kirish, parolni tiklash, va qo'shilgan hujjat hamda aktivlar bulutda saqlanadi (istalgan qurilmadan ko'rinadi). Ulanmasa, sayt demo rejimda ishlaydi.
+
+1. [supabase.com](https://supabase.com) da yangi loyiha yarating.
+2. **SQL Editor** → [`supabase/schema.sql`](supabase/schema.sql) mazmunini qo'ying → **Run**. Jadvallar va Row Level Security qoidalari yaratiladi (har kim faqat o'z yozuvlarini ko'radi).
+3. **Authentication → URL Configuration** → *Site URL* ga sayt manzilini yozing (masalan `https://nodirjonodilovpro-boop.github.io/oneid-portal/`).
+4. **Project Settings → API** dan *Project URL* va *anon / publishable* kalitni olib, [`supabase-config.js`](supabase-config.js) ga qo'ying.
+   ⚠️ `service_role` / `secret` kalitni hech qachon qo'ymang — sayt uni rad etadi.
+
 ## Texnologiyalar
 
 - HTML5, CSS3 (CSS o'zgaruvchilari, Grid, Flexbox), Vanilla JavaScript (hash routing asosidagi SPA)
@@ -60,6 +70,8 @@ index.html   — sahifa skeleti
 index.css    — barcha uslublar va moslashuvchan dizayn
 index.js     — sahifalar, marshrutlash va interaktivlik
 i18n.js      — rus va ingliz tillariga tarjimalar lug'ati
+supabase-config.js   — Supabase ulanish manzili va ochiq kaliti
+supabase/schema.sql  — ma'lumotlar bazasi jadvallari va RLS qoidalari
 ```
 
 ## Eslatma

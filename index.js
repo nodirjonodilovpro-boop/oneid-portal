@@ -45,6 +45,75 @@
     local.set('lang', lang);
     location.reload();
   }
+  // ---------- Supabase (backend) ----------
+  const SB = (function () {
+    const c = window.SUPABASE_CONFIG || {};
+    const url = (c.url || '').trim(), key = (c.anonKey || '').trim();
+    if (!url || !key) return null;
+    if (!window.supabase || !window.supabase.createClient) { console.error('[OneID] supabase-js kutubxonasi yuklanmadi'); return null; }
+    // Xavfsizlik: maxfiy (service_role / secret) kalit brauzerga qo'yilmasin
+    let role = '';
+    try { role = JSON.parse(atob(key.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).role || ''; } catch (e) { /* yangi formatdagi kalit */ }
+    if (key.startsWith('sb_secret_') || role === 'service_role') {
+      console.error('[OneID] supabase-config.js ichida MAXFIY kalit bor! Faqat "anon"/"publishable" kalitni qo\'ying. Backend o\'chirildi.');
+      return null;
+    }
+    try { return window.supabase.createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }); }
+    catch (e) { console.error('[OneID] Supabase ulanmadi:', e); return null; }
+  })();
+  state.user = null;      // Supabase foydalanuvchisi (haqiqiy hisob)
+  state.cloud = { docs: [], assets: [] };
+
+  const db = {
+    remote() { return !!(SB && state.user); },
+    async load() {
+      if (!this.remote()) return;
+      const [d, a] = await Promise.all([
+        SB.from('documents').select('*').order('created_at', { ascending: false }),
+        SB.from('assets').select('*').order('created_at', { ascending: false })
+      ]);
+      if (d.error || a.error) { console.error(d.error || a.error); toast('Ma\'lumotlarni yuklab bo\'lmadi', 'cloud_off'); return; }
+      state.cloud.docs = d.data; state.cloud.assets = a.data;
+    },
+    list(kind) { return this.remote() ? state.cloud[kind] : local.get(kind, []); },
+    async save(kind, id, data) {
+      const table = kind === 'docs' ? 'documents' : 'assets';
+      if (this.remote()) {
+        const q = id ? SB.from(table).update(data).eq('id', id) : SB.from(table).insert(data);
+        const { data: rows, error } = await q.select();
+        if (error) { console.error(error); toast('Saqlab bo\'lmadi: ' + error.message, 'error'); return false; }
+        const row = rows && rows[0];
+        const list = state.cloud[kind];
+        if (id) { const i = list.findIndex(x => x.id === id); if (i >= 0) list[i] = row; } else list.unshift(row);
+        return true;
+      }
+      const list = local.get(kind, []);
+      if (id) Object.assign(list.find(x => x.id === id) || {}, data); else list.unshift(Object.assign({ id: uid() }, data));
+      local.set(kind, list);
+      return true;
+    },
+    async remove(kind, id) {
+      const table = kind === 'docs' ? 'documents' : 'assets';
+      if (this.remote()) {
+        const { error } = await SB.from(table).delete().eq('id', id);
+        if (error) { console.error(error); toast('O\'chirib bo\'lmadi: ' + error.message, 'error'); return false; }
+        state.cloud[kind] = state.cloud[kind].filter(x => x.id !== id);
+        return true;
+      }
+      local.set(kind, local.get(kind, []).filter(x => x.id !== id));
+      return true;
+    }
+  };
+  function displayName() {
+    if (state.user) { const m = state.user.user_metadata || {}; return m.full_name || state.user.email; }
+    return USER.short;
+  }
+  function initials() {
+    if (!state.user) return USER.initials;
+    const p = displayName().replace(/@.*/, '').split(/[\s._-]+/).filter(Boolean);
+    return ((p[0] || '?')[0] + (p[1] ? p[1][0] : '')).toUpperCase();
+  }
+
   function themeBtn() { return `<button class="icon-btn" data-theme-toggle aria-label="Tungi rejim" title="${isDark() ? 'Kunduzgi rejim' : 'Tungi rejim'}">${ic(isDark() ? 'light_mode' : 'dark_mode')}</button>`; }
 
   // ---------- Helpers ----------
@@ -133,7 +202,8 @@
       <section class="card pad stack" style="gap:18px">
         <div class="row between"><div><div class="h2" style="font-size:20px">Tizimga kirish</div><div class="small muted">Davlat raqamli portali va shaxsiy kabinetingizga kirish usulini tanlang</div></div><span class="chip green">${ic('lock', 'sm')} XAVFSIZ TIZIM</span></div>
         <div class="tabs" id="loginTabs">
-          <button class="tab active" data-tab="pass">${ic('key', 'sm')}Login & Parol</button>
+          ${SB ? `<button class="tab" data-tab="email">${ic('mail', 'sm')}Email</button>` : ''}
+          <button class="tab" data-tab="pass">${ic('key', 'sm')}${SB ? 'Demo' : 'Login & Parol'}</button>
           <button class="tab" data-tab="eimzo">${ic('badge', 'sm')}E-IMZO</button>
           <button class="tab" data-tab="qr">${ic('qr_code_2', 'sm')}QR-kod</button>
           <button class="tab" data-tab="mobile">${ic('smartphone', 'sm')}Mobile-ID</button>
@@ -149,6 +219,21 @@
   }
 
   const loginPanels = {
+    email: () => {
+      const up = state.authMode === 'signup';
+      return `
+      <form id="emailForm" class="stack" style="gap:14px" novalidate>
+        <div class="notice green">${ic('cloud_done')}<div><div class="small bold">${up ? 'Yangi hisob yaratish' : 'Haqiqiy hisob bilan kirish'}</div><p>Hujjat va aktivlaringiz bulutda (Supabase) saqlanadi va istalgan qurilmadan ko'rinadi.</p></div></div>
+        ${up ? `<div class="field"><label><span>To'liq ism</span></label><div class="input">${ic('person')}<input id="suName" autocomplete="name" placeholder="Ism Familiya" maxlength="60"></div></div>` : ''}
+        <div class="field"><label><span>Email</span></label><div class="input">${ic('mail')}<input id="suEmail" type="email" autocomplete="email" placeholder="siz@example.com" maxlength="120"></div></div>
+        <div class="field"><label><span>Parol</span>${up ? '<span class="faint">Kamida 8 ta belgi</span>' : '<a href="#" class="primary" id="forgot">Parolni unutdingizmi?</a>'}</label><div class="input">${ic('key')}<input id="suPass" type="password" autocomplete="${up ? 'new-password' : 'current-password'}" placeholder="••••••••"><button type="button" id="eye" aria-label="Parolni ko'rsatish">${ic('visibility')}</button></div></div>
+        ${up ? `<div class="field"><label><span>Parolni takrorlang</span></label><div class="input">${ic('key')}<input id="suPass2" type="password" autocomplete="new-password" placeholder="••••••••"></div></div>` : ''}
+        <div id="loginErr" class="notice red" style="display:none">${ic('error')}<p></p></div>
+        <button class="btn btn-primary btn-block" type="submit" id="suBtn">${ic(up ? 'person_add' : 'login', 'sm')} ${up ? 'Ro\'yxatdan o\'tish' : 'Kirish'}</button>
+        <div class="small" style="text-align:center">${up ? 'Hisobingiz bormi?' : 'Hisobingiz yo\'qmi?'} <a href="#" class="primary bold" id="switchMode">${up ? 'Kirish' : 'Ro\'yxatdan o\'tish'}</a></div>
+        <div class="xs faint" style="text-align:center">${ic('info', 'sm')} Bu o'quv loyiha: davlat OneID parolingizni emas, yangi parol o'ylab toping.</div>
+      </form>`;
+    },
     pass: () => `
       <form id="passForm" class="stack" style="gap:14px" novalidate>
         <div class="field"><label><span>JShShIR (PINFL) yoki Login ${ic('help', 'sm faint')}</span><span class="faint" id="pinflCount">14 ta raqam</span></label>
@@ -189,12 +274,69 @@
       clearTimers();
       $$('#loginTabs .tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
       panel.innerHTML = '<div class="fade-in">' + loginPanels[tab]() + '</div>';
-      ({ pass: mountPass, eimzo: mountEri, qr: mountQr, mobile: mountMobile })[tab]();
+      ({ email: () => mountEmail(() => show('email')), pass: mountPass, eimzo: mountEri, qr: mountQr, mobile: mountMobile })[tab]();
       translate(panel);
     };
     $$('#loginTabs .tab').forEach(t => t.addEventListener('click', () => show(t.dataset.tab)));
     $$('[data-tab-jump]').forEach(b => b.addEventListener('click', () => show(b.dataset.tabJump)));
-    show('pass');
+    show(SB ? 'email' : 'pass');
+  }
+
+  // ---------- Email orqali haqiqiy hisob (Supabase Auth) ----------
+  function mountEmail(redraw) {
+    const up = state.authMode === 'signup';
+    const err = $('#loginErr');
+    const fail = (m) => { err.style.display = 'flex'; err.querySelector('p').textContent = tr(m); };
+    $('#eye').onclick = () => { const p = $('#suPass'); const s = p.type === 'password'; p.type = s ? 'text' : 'password'; $('#eye').innerHTML = ic(s ? 'visibility_off' : 'visibility'); };
+    $('#switchMode').onclick = (e) => { e.preventDefault(); state.authMode = up ? 'signin' : 'signup'; redraw(); };
+    const forgot = $('#forgot');
+    if (forgot) forgot.onclick = async (e) => {
+      e.preventDefault();
+      const email = $('#suEmail').value.trim();
+      if (!/^\S+@\S+\.\S+$/.test(email)) return fail('Avval email manzilingizni kiriting.');
+      const { error } = await SB.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+      if (error) return fail(error.message);
+      toast('Parolni tiklash havolasi emailingizga yuborildi', 'mail');
+    };
+    $('#emailForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = $('#suEmail').value.trim(), pass = $('#suPass').value;
+      if (!/^\S+@\S+\.\S+$/.test(email)) return fail('To\'g\'ri email manzilini kiriting.');
+      if (up) {
+        const name = $('#suName').value.trim();
+        if (name.length < 2) return fail('Ismingizni kiriting.');
+        if (pass.length < 8) return fail('Parol kamida 8 ta belgidan iborat bo\'lishi kerak.');
+        if (pass !== $('#suPass2').value) return fail('Parollar mos kelmadi.');
+      } else if (!pass) return fail('Parolni kiriting.');
+      err.style.display = 'none';
+      const btn = $('#suBtn'); btn.disabled = true; btn.innerHTML = ic('progress_activity', 'sm') + ' ' + tr('Kuting...');
+      const res = up
+        ? await SB.auth.signUp({ email, password: pass, options: { data: { full_name: $('#suName').value.trim() }, emailRedirectTo: location.origin + location.pathname } })
+        : await SB.auth.signInWithPassword({ email, password: pass });
+      btn.disabled = false; btn.innerHTML = ic(up ? 'person_add' : 'login', 'sm') + ' ' + tr(up ? 'Ro\'yxatdan o\'tish' : 'Kirish');
+      if (res.error) {
+        const m = res.error.message || '';
+        if (/invalid login credentials/i.test(m)) return fail('Email yoki parol noto\'g\'ri.');
+        if (/email not confirmed/i.test(m)) return fail('Email hali tasdiqlanmagan. Pochtangizdagi havolani bosing.');
+        if (/already registered/i.test(m)) return fail('Bu email bilan hisob allaqachon mavjud. Kirish bo\'limidan foydalaning.');
+        if (/failed to fetch|network/i.test(m)) return fail('Serverga ulanib bo\'lmadi. Internetni yoki supabase-config.js sozlamasini tekshiring.');
+        return fail(m);
+      }
+      if (!res.data.session) {
+        state.authMode = 'signin'; redraw();
+        toast('Tasdiqlash xati emailingizga yuborildi. Havolani bosib, keyin kiring.', 'mark_email_read');
+        return;
+      }
+      await onSignedIn(res.data.session.user);
+      state.stage = 'done'; store.set('stage', 'done');
+      go('success');
+    });
+  }
+  async function onSignedIn(user) {
+    state.user = user;
+    store.set('demo', false);
+    state.authed = true; store.set('authed', true);
+    await db.load();
   }
   function newCaptcha() {
     const a = Math.floor(Math.random() * 40) + 10, b = Math.floor(Math.random() * 9) + 1;
@@ -265,6 +407,7 @@
     };
   }
   function completeLogin() {
+    store.set('demo', !state.user);
     state.stage = 'done'; store.set('stage', 'done');
     go('success');
   }
@@ -478,7 +621,7 @@
                 <a class="dd-item" href="#/deadlines"><div class="icon-box amber" style="width:34px;height:34px">${ic('build', 'sm')}</div><div><div class="small bold">Texnik ko'rik muddati</div><div class="xs muted">24 kun qoldi • YHXX</div></div></a>
                 <a class="dd-item" href="#/settings"><div class="icon-box green" style="width:34px;height:34px">${ic('login', 'sm')}</div><div><div class="small bold">Yangi kirish aniqlandi</div><div class="xs muted">Toshkent • Chrome 122 • Bugun</div></div></a>
               </div></div>
-            <a class="user" href="#/settings"><div><b>${USER.short} ${ic('verified', 'sm green fill')}</b><small>JSHSHIR: ${USER.pinfl}</small></div><div class="avatar">${USER.initials}</div></a>
+            <a class="user" href="#/settings"><div><b>${esc(displayName())} ${ic(state.user ? 'cloud_done' : 'verified', 'sm green fill')}</b><small>${state.user ? esc(state.user.email) : 'JSHSHIR: ' + USER.pinfl}</small></div><div class="avatar">${esc(initials())}</div></a>
             <button class="icon-btn" data-logout aria-label="Chiqish" title="Tizimdan chiqish">${ic('logout')}</button>
           </div>
         </header>
@@ -574,7 +717,7 @@
       let control;
       if (f.type === 'select') control = `<select name="${f.name}">${f.options.map(o => `<option value="${esc(o[0])}" ${String(v) === String(o[0]) ? 'selected' : ''}>${esc(o[1])}</option>`).join('')}</select>`;
       else if (f.type === 'date') control = `<input type="date" name="${f.name}" value="${esc(toISO(v))}">`;
-      else control = `<input name="${f.name}" value="${esc(v)}" placeholder="${esc(f.placeholder || '')}" maxlength="${f.max || 80}">`;
+      else control = `<input type="${f.type === 'password' ? 'password' : 'text'}" name="${f.name}" value="${esc(v)}" placeholder="${esc(f.placeholder || '')}" maxlength="${f.max || 80}">`;
       return `<div class="field ${f.full ? 'full' : ''}"><label><span>${esc(f.label)}${f.required ? ' <b class="red">*</b>' : ''}</span></label><div class="input">${f.icon ? ic(f.icon) : ''}${control}</div></div>`;
     };
     back.innerHTML = `
@@ -616,7 +759,7 @@
   // ---------- Foydalanuvchi qo'shgan hujjatlar ----------
   const DOC_CATS = [['shaxsiy', 'Shaxsiy'], ['haydovchilik', 'Haydovchilik'], ['talim', 'Ta\'lim'], ['tibbiy', 'Tibbiy'], ['boshqa', 'Boshqa']];
   const DOC_ICONS = { shaxsiy: 'badge', haydovchilik: 'directions_car', talim: 'school', tibbiy: 'medical_information', boshqa: 'description' };
-  const userDocs = () => local.get('docs', []);
+  const userDocs = () => db.list('docs');
   const allDocs = () => DOCS.concat(userDocs().map(d => Object.assign({ icon: DOC_ICONS[d.cat] || 'description', status: 'Qo\'shilgan', color: 'amber', custom: true }, d)));
   function docForm(doc) {
     openForm({
@@ -630,19 +773,14 @@
         { name: 'exp', label: 'Amal qilish muddati', type: 'date' },
         { name: 'org', label: 'Bergan tashkilot', full: true, icon: 'account_balance', placeholder: 'Masalan: FHDYO, Toshkent sh.' }
       ],
-      onSave: (data) => {
-        const list = userDocs();
-        if (doc) Object.assign(list.find(d => d.id === doc.id) || {}, data);
-        else list.unshift(Object.assign({ id: uid() }, data));
-        local.set('docs', list);
-        toast('Hujjat saqlandi');
-        render();
+      onSave: async (data) => {
+        if (await db.save('docs', doc && doc.id, data)) { toast('Hujjat saqlandi'); render(); }
       },
       onDelete: doc ? () => deleteDoc(doc) : null
     });
   }
   function deleteDoc(doc) {
-    confirmDelete(doc.title, () => { local.set('docs', userDocs().filter(d => d.id !== doc.id)); toast("Hujjat o'chirildi", 'delete'); render(); });
+    confirmDelete(doc.title, async () => { if (await db.remove('docs', doc.id)) { toast("Hujjat o'chirildi", 'delete'); render(); } });
   }
 
   function documentsPage() {
@@ -754,7 +892,7 @@
   }
   // ---------- Foydalanuvchi qo'shgan aktivlar ----------
   const ASSET_TYPES = [['car', 'Avtomobil', 'directions_car'], ['house', 'Kvartira / Uy', 'apartment'], ['land', 'Yer uchastkasi', 'cottage']];
-  const userAssets = () => local.get('assets', []);
+  const userAssets = () => db.list('assets');
   function assetListHTML() {
     const list = userAssets();
     if (!list.length) return `<div class="empty" style="grid-column:1/-1">${ic('inventory_2', 'lg')}<div style="margin-top:6px">Hali aktiv qo'shilmagan. «Aktiv qo'shish» tugmasini bosing.</div></div>`;
@@ -777,11 +915,8 @@
         { name: 'date', label: 'Ro\'yxatga olingan sana', type: 'date' },
         { name: 'details', label: 'Qo\'shimcha ma\'lumot', full: true, icon: 'notes', placeholder: tr('Manzil yoki rangi, yili') }
       ],
-      onSave: (data) => {
-        const list = userAssets();
-        if (asset) Object.assign(list.find(a => a.id === asset.id) || {}, data);
-        else list.unshift(Object.assign({ id: uid() }, data));
-        local.set('assets', list);
+      onSave: async (data) => {
+        if (!(await db.save('assets', asset && asset.id, data))) return;
         toast('Aktiv saqlandi');
         render();
         setTimeout(() => { const s = $('[data-sec="custom"]'); if (s) s.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
@@ -790,7 +925,7 @@
     });
   }
   function deleteAsset(a) {
-    confirmDelete(a.name, () => { local.set('assets', userAssets().filter(x => x.id !== a.id)); toast("Aktiv o'chirildi", 'delete'); render(); });
+    confirmDelete(a.name, async () => { if (await db.remove('assets', a.id)) { toast("Aktiv o'chirildi", 'delete'); render(); } });
   }
 
   function realty(kind, type, own, ownColor, title, place, tags, cad, tax, btns) {
@@ -932,7 +1067,10 @@
       <section class="row between wrap" style="gap:16px"><div><div class="upper" style="color:var(--primary)">Shaxsiy kabinet</div><h1 class="h1">Xavfsizlik & Sozlamalar</h1></div><button class="btn btn-danger" data-logout>${ic('logout', 'sm')} Tizimdan chiqish</button></section>
       <section class="grid-main">
         <div class="stack" style="gap:20px">
-          <div class="card pad row wrap" style="gap:16px"><div class="avatar" style="width:64px;height:64px;font-size:22px">${USER.initials}</div><div class="grow"><div class="h2">${USER.full}</div><div class="small muted mono">JShShIR: ${USER.pinfl}</div><div class="row wrap" style="margin-top:6px;gap:6px"><span class="chip green">${ic('verified', 'sm')} Daraja 3 • To'liq</span><span class="chip blue">${USER.phone}</span><span class="chip">${USER.email}</span></div></div><button class="btn btn-soft" data-toast="Ma'lumotlarni o'zgartirish uchun Davlat xizmatlari markaziga murojaat qiling">${ic('edit', 'sm')} Tahrirlash</button></div>
+          ${state.user ? `
+          <div class="card pad row wrap" style="gap:16px"><div class="avatar" style="width:64px;height:64px;font-size:22px">${esc(initials())}</div><div class="grow"><div class="h2">${esc(displayName())}</div><div class="small muted">${esc(state.user.email)}</div><div class="row wrap" style="margin-top:6px;gap:6px"><span class="chip green">${ic('cloud_done', 'sm')} Supabase hisob</span><span class="chip">${ic('event', 'sm')} ${new Date(state.user.created_at).toLocaleDateString('uz-UZ')}</span></div></div><button class="btn btn-soft" id="editName">${ic('edit', 'sm')} Tahrirlash</button></div>
+          <div class="notice">${ic('info')}<p>Hujjatlar portfeli va Mulk bo'limiga siz qo'shgan yozuvlar bulutda saqlanadi. Qolgan ma'lumotlar (ID-karta, pasport va h.k.) namuna sifatida ko'rsatilgan.</p></div>` : `
+          <div class="card pad row wrap" style="gap:16px"><div class="avatar" style="width:64px;height:64px;font-size:22px">${USER.initials}</div><div class="grow"><div class="h2">${USER.full}</div><div class="small muted mono">JShShIR: ${USER.pinfl}</div><div class="row wrap" style="margin-top:6px;gap:6px"><span class="chip green">${ic('verified', 'sm')} Daraja 3 • To'liq</span><span class="chip blue">${USER.phone}</span><span class="chip">${USER.email}</span></div></div><button class="btn btn-soft" data-toast="Ma'lumotlarni o'zgartirish uchun Davlat xizmatlari markaziga murojaat qiling">${ic('edit', 'sm')} Tahrirlash</button></div>`}
           <div class="card pad"><b class="h3">Xavfsizlik sozlamalari</b>${toggles.map(t => `<div class="set-row"><div class="grow"><div class="small bold">${t[1]}</div><div class="xs muted">${t[2]}</div></div><label class="switch"><input type="checkbox" data-set="${t[0]}" ${store.get('set_' + t[0], t[3]) ? 'checked' : ''}><span></span></label></div>`).join('')}</div>
           <div class="card pad"><div class="row between" style="margin-bottom:6px"><b class="h3">Faol sessiyalar</b><button class="btn btn-ghost btn-sm" id="killAll">Boshqalarini tugatish</button></div>
             <div id="sessions">${[['desktop_windows', 'Chrome 122 • Windows 11', 'Toshkent, UZ • 84.54.82.*** ', 'Joriy sessiya', true], ['phone_iphone', 'OneID Mobile • iPhone 15', 'Toshkent, UZ • 2 soat oldin'], ['laptop_mac', 'Safari • macOS', 'Samarqand, UZ • 3 kun oldin']].map(s => `<div class="set-row">${ic(s[0], 'primary')}<div class="grow"><div class="small bold">${s[1]}</div><div class="xs muted">${s[2]}</div></div>${s[4] ? `<span class="chip green">${s[3]}</span>` : `<button class="btn btn-ghost btn-sm" data-kill>Tugatish</button>`}</div>`).join('')}</div></div>
@@ -949,6 +1087,16 @@
     $$('[data-set]').forEach(c => c.addEventListener('change', () => { store.set('set_' + c.dataset.set, c.checked); toast(c.checked ? 'Yoqildi' : 'O\'chirildi', c.checked ? 'toggle_on' : 'toggle_off'); }));
     $$('[data-kill]').forEach(b => b.addEventListener('click', () => { b.closest('.set-row').remove(); toast('Sessiya tugatildi'); }));
     $('#killAll').onclick = () => { $$('[data-kill]').forEach(b => b.closest('.set-row').remove()); toast('Boshqa barcha sessiyalar tugatildi'); };
+    const en = $('#editName');
+    if (en) en.onclick = () => openForm({
+      title: 'Profilni tahrirlash', values: { full_name: displayName() },
+      fields: [{ name: 'full_name', label: "To'liq ism", required: true, full: true, icon: 'person', max: 60 }],
+      onSave: async (d) => {
+        const { data, error } = await SB.auth.updateUser({ data: { full_name: d.full_name } });
+        if (error) return toast(error.message, 'error');
+        state.user = data.user; toast('Profil yangilandi'); render();
+      }
+    });
     $('#savePin').onclick = () => { const v = $('#newPin').value; if (!/^\d{5}$/.test(v)) return toast('PIN 5 ta raqamdan iborat bo\'lishi kerak', 'error'); $('#newPin').value = ''; toast('PIN-kod yangilandi'); };
     $$('[data-l]').forEach(b => b.addEventListener('click', () => setLang(b.dataset.l)));
     $$('[data-mode]').forEach(b => b.addEventListener('click', () => { $$('[data-mode]').forEach(x => x.classList.toggle('active', x === b)); setTheme(b.dataset.mode); }));
@@ -986,7 +1134,9 @@
   // Sahifadagi matnlarni tanlangan tilga o'girish
   function translate(root) { if (window.I18N && state.lang !== 'uz') window.I18N.apply(root, state.lang); }
 
-  function logout() {
+  async function logout() {
+    if (SB && state.user) { try { await SB.auth.signOut(); } catch (e) { /* ignore */ } }
+    state.user = null; state.cloud = { docs: [], assets: [] };
     state.authed = false; state.stage = 'none';
     store.set('authed', false); store.set('stage', 'none');
     toast('Tizimdan xavfsiz chiqildi', 'logout');
@@ -1022,5 +1172,39 @@
     const onSys = () => { if (themeMode() === 'system') setTheme('system'); };
     mq.addEventListener ? mq.addEventListener('change', onSys) : mq.addListener(onSys);
   }
-  render();
+
+  // Ishga tushirish: avval Supabase sessiyasini tiklaymiz, keyin sahifani chizamiz
+  (async function boot() {
+    if (SB) {
+      app.innerHTML = `<div style="min-height:60vh;display:grid;place-items:center" class="muted">${ic('progress_activity', 'lg')}</div>`;
+      try {
+        const { data } = await SB.auth.getSession();
+        if (data && data.session) {
+          await onSignedIn(data.session.user);
+          // Email tasdiqlash havolasidan qaytilgan bo'lsa — kabinetga
+          if (!location.hash || location.hash.startsWith('#access_token') || location.hash === '#/login') location.hash = '#/dashboard';
+        } else if (state.authed && state.stage === 'done' && !store.get('demo', false)) {
+          state.authed = false; store.set('authed', false);
+        }
+      } catch (e) { console.error('[OneID] sessiya tiklanmadi', e); }
+      SB.auth.onAuthStateChange((event, session) => {
+        if (event === 'PASSWORD_RECOVERY') {
+          openForm({
+            title: 'Yangi parol o\'rnatish',
+            fields: [{ name: 'p', label: 'Yangi parol (kamida 8 belgi)', type: 'password', required: true, full: true, icon: 'key' }],
+            onSave: async (d) => {
+              if (d.p.length < 8) return toast('Parol kamida 8 ta belgidan iborat bo\'lishi kerak.', 'error');
+              const { error } = await SB.auth.updateUser({ password: d.p });
+              toast(error ? error.message : 'Parol yangilandi', error ? 'error' : 'check_circle');
+            }
+          });
+        } else if (event === 'SIGNED_OUT' && state.user) {
+          state.user = null; state.authed = false; store.set('authed', false); go('login');
+        } else if (event === 'USER_UPDATED' && session) {
+          state.user = session.user;
+        }
+      });
+    }
+    render();
+  })();
 })();
